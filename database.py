@@ -13,9 +13,11 @@ import sqlite3
 import numpy as np
 import json
 import csv
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from sentence_transformers import SentenceTransformer
+from benchmark import Benchmark
 
 from config import VECTOR_DB_PATH, LOCATIONS_DB_PATH, BENEFITS
 
@@ -82,11 +84,13 @@ class DatabaseManager:
         conn.close()
         print(f"[DB] Stored {len(chunks)} embeddings for '{benefit_type}'")
     
-    def load_embeddings(self, benefit_type: str) -> Tuple[List[str], np.ndarray]:
+    def load_embeddings(self, benefit_type: str, benchmark = None) -> Tuple[List[str], np.ndarray]:
         """
         Load all embeddings for a benefit type.
         Returns: (chunks, embeddings_matrix)
         """
+        start_time = time.time()
+
         conn = sqlite3.connect(self.vector_db_path)
         cursor = conn.execute(
             "SELECT chunk_text, embedding FROM embeddings WHERE benefit_type = ? ORDER BY id",
@@ -111,7 +115,15 @@ class DatabaseManager:
             return [], np.array([])
         
         embeddings_matrix = np.vstack(embedding_list)  # shape: (num_chunks, dim)
-        print(f"[DB] Loaded {len(chunks)} embeddings for '{benefit_type}'")
+
+        load_time = time.time() - start_time
+        
+        if benchmark:
+            benchmark.log("num_embeddings", len(chunks))
+            benchmark.log("db_load_time", load_time)
+        
+        print(f"[DB] Loaded {len(chunks)} embeddings for '{benefit_type}' in {load_time:.4f}s")
+
         return chunks, embeddings_matrix
     
     def has_embeddings(self, benefit_type: str) -> bool:
@@ -207,10 +219,12 @@ class DatabaseManager:
         conn.close()
         print(f"[DB] Stored {count} locations for '{benefit_type}'")
     
-    def load_locations(self, benefit_type: str, borough: str = None) -> List[Dict[str, Any]]:
+    def load_locations(self, benefit_type: str, borough: str = None, benchmark = None) -> List[Dict[str, Any]]:
         """
         Load locations for a benefit type, optionally filtered by borough.
         """
+        start_time = time.time()
+
         conn = sqlite3.connect(self.locations_db_path)
         
         if borough:
@@ -252,6 +266,13 @@ class DatabaseManager:
             locations.append(loc)
         
         conn.close()
+
+        elapsed = time.time() - start_time
+
+        if benchmark:
+            benchmark.log("location_query_time", elapsed)
+            benchmark.log("num_locations_returned", len(locations))
+
         return locations
     
     def has_locations(self, benefit_type: str) -> bool:

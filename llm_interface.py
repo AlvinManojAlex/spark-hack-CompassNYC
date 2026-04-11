@@ -6,9 +6,10 @@ Builds prompts and manages generation.
 """
 
 import requests
+import time
 from typing import Dict, List, Optional
 from config import OLLAMA_URL, OLLAMA_MODEL, LLM_TEMPERATURE, LLM_MAX_TOKENS, BENEFITS
-
+from benchmark import Benchmark
 
 class LLMInterface:
     """
@@ -21,7 +22,7 @@ class LLMInterface:
         print(f"[LLM] Initialized with model: {self.model}")
     
     def generate(self, prompt: str, temperature: float = LLM_TEMPERATURE, 
-                 max_tokens: int = LLM_MAX_TOKENS, stream: bool = True) -> str:
+                 max_tokens: int = LLM_MAX_TOKENS, stream: bool = True, benchmark = None) -> str:
         """
         Call Ollama to generate a response.
         
@@ -35,6 +36,11 @@ class LLMInterface:
             Generated text
         """
         print(f"[LLM] Generating with {self.model}...")
+
+        if benchmark:
+            benchmark.start("llm_api_call")
+        
+        start_time = time.time()
         
         try:
             response = requests.post(
@@ -79,7 +85,31 @@ class LLMInterface:
                 print(f"[LLM] Generated {len(result)} characters")
                 return result
             
+            end_time = time.time()
+            latency = end_time - start_time
+
+            # metrics
+            input_chars = len(prompt)
+            output_chars = len(full_response)
+
+            # Rough token estimate (works fine for benchmarking)
+            input_tokens = input_chars / 4
+            output_tokens = output_chars / 4
+
+            if benchmark:
+                benchmark.stop("llm_api_call")
+                benchmark.log("llm_latency", latency)
+                benchmark.log("input_tokens", int(input_tokens))
+                benchmark.log("output_tokens", int(output_tokens))
+                benchmark.log("tokens_per_sec", output_tokens / latency if latency > 0 else 0)
+        
+            print(f"[LLM] Generated {output_chars} characters in {latency:.2f}s")
+
+            return full_response
+            
         except requests.exceptions.RequestException as e:
+            if benchmark:
+                benchmark.log("llm_error", str(e))
             print(f"[LLM] ERROR: {e}")
             return f"Error calling LLM: {e}"
     
@@ -186,23 +216,33 @@ YOUR RESPONSE (organize by program):"""
                                 benefit_type: str,
                                 user_query: str,
                                 eligibility_context: str,
-                                location_context: str) -> str:
+                                location_context: str,
+                                benchmark = None) -> str:
         """
         Convenience method: build prompt + generate answer for single benefit.
         """
         prompt = self.build_eligibility_prompt(
             benefit_type, user_query, eligibility_context, location_context
         )
-        return self.generate(prompt)
+
+        if benchmark:
+            benchmark.log("prompt_length_chars", len(prompt))
+
+        return self.generate(prompt, benchmark = benchmark)
     
     def answer_multi_benefit_query(self,
                                    user_query: str,
-                                   benefit_contexts: Dict[str, Dict[str, str]]) -> str:
+                                   benefit_contexts: Dict[str, Dict[str, str]],
+                                   benchmark = None) -> str:
         """
         Convenience method: build prompt + generate answer for multiple benefits.
         """
         prompt = self.build_multi_benefit_prompt(user_query, benefit_contexts)
-        return self.generate(prompt)
+
+        if benchmark:
+            benchmark.log("prompt_length_chars", len(prompt))
+
+        return self.generate(prompt, benchmark = benchmark)
 
 
 if __name__ == "__main__":
