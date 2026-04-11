@@ -173,38 +173,41 @@ Response:"""
         for benefit_type, contexts in benefit_contexts.items():
             benefit_name = BENEFITS[benefit_type]["name"]
             sections.append(f"""
-═══════════════════════════════════════════════════════════════
-{benefit_name.upper()}
-═══════════════════════════════════════════════════════════════
+        --- {benefit_name.upper()} ---
 
-ELIGIBILITY RULES:
-{contexts['eligibility']}
+        ELIGIBILITY:
+        {contexts['eligibility']}
 
-LOCATIONS:
-{contexts['locations']}
-""")
-        
-        all_benefits = ", ".join([BENEFITS[bt]["name"] for bt in benefit_contexts.keys()])
-        
-        prompt = f"""You are Compass NYC, a helpful AI assistant that guides New Yorkers to social services.
+        LOCATIONS:
+        {contexts['locations']}
+        """)
 
-The user is asking about their eligibility for multiple programs. You have information about: {all_benefits}.
+        all_benefits = ", ".join(BENEFITS[bt]["name"] for bt in benefit_contexts.keys())
 
-INSTRUCTIONS:
-1. For EACH program, determine if the user likely qualifies based on the rules provided
-2. Explain eligibility for each program separately and clearly
-3. Prioritize the programs that are the best fit for their situation
-4. Point them to specific offices and tell them what documents to bring
-5. Be warm, specific, and organized - use clear headings for each program
+        prompt = f"""You are Compass NYC, an assistant that helps New Yorkers understand social service eligibility and where to apply.
 
-{"".join(sections)}
+        The user may qualify for: {all_benefits}.
 
-──────────────────────────────────────────────────────────────────────
-USER'S SITUATION:
-──────────────────────────────────────────────────────────────────────
-{user_query}
+        TASK:
+        For EACH program below:
+        - Decide if the user likely qualifies using ONLY the provided eligibility rules
+        - Explain briefly why/why not, based on their situation
+        - If eligible: list required documents + nearest location + next steps
+        - If not/unclear: explain what is missing or suggest alternatives
 
-YOUR RESPONSE (organize by program):"""
+        PRIORITIZATION:
+        - Rank programs by best fit for the user
+
+        FORMAT:
+        Use clear headings per program (one section per benefit). Be organized and easy to scan.
+
+        PROGRAM DETAILS:
+        {"".join(sections)}
+
+        --- USER SITUATION ---
+        {user_query}
+
+        RESPONSE:"""
 
         return prompt
     
