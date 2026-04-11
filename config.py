@@ -8,7 +8,7 @@ Adding a new benefit = add one entry to BENEFITS dict.
 # ── MODEL CONFIGURATION ───────────────────────────────────────────────────────
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5:72b"  # Upgrade to "llama3.1:70b" or "nemotron-51b-instruct" for better reasoning
+OLLAMA_MODEL = "qwen2.5:7b"  # Upgrade to "qwen2.5:72b" or "nemotron-51b-instruct" for better reasoning
 EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
 
 # RAG settings
@@ -19,6 +19,7 @@ CHUNK_OVERLAP = 50  # words
 # LLM generation settings
 LLM_TEMPERATURE = 0.3  # Lower = more factual
 LLM_MAX_TOKENS = 600
+BENEFIT_DETECTION_MODE = "llm"
 
 # ── DATABASE PATHS ────────────────────────────────────────────────────────────
 
@@ -39,6 +40,22 @@ BENEFITS = {
         "category": "food",
         "color": "#4CAF50",  # green
         "description": "Supplemental Nutrition Assistance Program"
+    },
+    "medicaid": {
+        "name": "Medicaid",
+        "eligibility_file": "data/eligibility/medicaid_eligibility.txt",
+        "locations_file": "data/locations/medicaid_locations.csv",
+        "category": "health",
+        "color": "#E91E63",  # pink
+        "description": "Free or low-cost health coverage"
+    },
+    "hra_cash_assistance": {
+        "name": "HRA Cash Assistance",
+        "eligibility_file": "data/eligibility/hra_cash_assistance_eligibility.txt",
+        "locations_file": "data/locations/hra_cash_assistance_locations.csv",
+        "category": "financial",
+        "color": "#2196F3",  # blue
+        "description": "Temporary cash assistance for basic needs"
     },
     
     # ── ADD MORE BENEFITS HERE ────────────────────────────────────────────────
