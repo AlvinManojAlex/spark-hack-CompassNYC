@@ -22,7 +22,7 @@ class LLMInterface:
         print(f"[LLM] Initialized with model: {self.model}")
     
     def generate(self, prompt: str, temperature: float = LLM_TEMPERATURE, 
-                 max_tokens: int = LLM_MAX_TOKENS, stream: bool = True, benchmark = None) -> str:
+                 max_tokens: int = LLM_MAX_TOKENS, stream: bool = False, benchmark = None) -> str:
         """
         Call Ollama to generate a response.
         
