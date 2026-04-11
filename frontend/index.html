@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compass NYC</title>
+
+<!-- React -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- App styles -->
+<link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ── CONFIG────────────────────────────
+const API_BASE = "http://100.104.220.68:8000";
+
+// ── BENEFIT COLORS for map pins ───────────────────────────────────────────────
+const BENEFIT_COLORS = {
+  snap:                 "#f5c542",
+  medicaid:             "#4fd1a5",
+  hra_cash_assistance:  "#7c8ff5",
+  food_pantries:        "#f5845c",
+  default:              "#f5c542",
+};
+
+// ── NYC CENTER ────────────────────────────────────────────────────────────────
+const NYC_CENTER = [40.7128, -74.0060];
+
+// ── EXAMPLE QUERIES ───────────────────────────────────────────────────────────
+const EXAMPLES = [
+  "I live in Brooklyn with my two kids. We're a family of 3 and I make $2,200/month. Do I qualify for SNAP?",
+  "I need help with food and healthcare. I'm in the Bronx making $1,400/month.",
+  "I'm 68 years old in Queens on Social Security of $900/month. What benefits can I get?",
+  "I'm undocumented in Manhattan but my kids are US citizens. Can they get food assistance?",
+];
+
+// ── MAP COMPONENT ─────────────────────────────────────────────────────────────
+function MapView({ locationsByBenefit, hasQueried }) {
+  const mapRef     = useRef(null);
+  const leafletRef = useRef(null);
+  const markersRef = useRef([]);
+
+  // Init map once
+  useEffect(() => {
+    if (!mapRef.current || leafletRef.current) return;
+    leafletRef.current = L.map(mapRef.current, { center: NYC_CENTER, zoom: 11 });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap"
+    }).addTo(leafletRef.current);
+  }, []);
+
+  // Update markers when locationsByBenefit changes
+  useEffect(() => {
+    if (!leafletRef.current) return;
+    const map = leafletRef.current;
+
+    // Clear old markers
+    markersRef.current.forEach(m => map.removeLayer(m));
+    markersRef.current = [];
+
+    // Flatten all locations across benefits, keeping benefit type for color
+    const allLocations = Object.entries(locationsByBenefit).flatMap(
+      ([benefitType, locs]) =>
+        (locs || [])
+          .filter(l => l.latitude && l.longitude)
+          .map(l => ({ ...l, benefitType }))
+    );
+
+    if (allLocations.length === 0) {
+      map.setView(NYC_CENTER, 11);
+      return;
+    }
+
+    allLocations.forEach(loc => {
+      const color = BENEFIT_COLORS[loc.benefitType] || BENEFIT_COLORS.default;
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:14px; height:14px;
+          background:${color};
+          border:2px solid #0f1117;
+          border-radius:50%;
+          box-shadow:0 0 0 3px ${color}44, 0 2px 8px rgba(0,0,0,0.5);
+          cursor:pointer;
+        "></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+
+      const popupHtml = `
+        <div class="popup-inner">
+          <div class="popup-name">${loc.name || 'Service Location'}</div>
+          <div class="popup-row"><span class="popup-row-icon">📍</span><span>${loc.address || ''}, ${loc.borough || ''} ${loc.zip || ''}</span></div>
+          ${loc.phone     ? `<div class="popup-row"><span class="popup-row-icon">📞</span><span>${loc.phone}</span></div>` : ''}
+          ${loc.hours     ? `<div class="popup-row"><span class="popup-row-icon">🕐</span><span>${loc.hours}</span></div>` : ''}
+          ${loc.languages ? `<div class="popup-row"><span class="popup-row-icon">💬</span><span>${loc.languages}</span></div>` : ''}
+          ${loc.walk_in === 'Yes' ? '<span class="popup-tag">✓ Walk-in welcome</span>' : ''}
+        </div>`;
+
+      markersRef.current.push(
+        L.marker([loc.latitude, loc.longitude], { icon })
+          .addTo(map)
+          .bindPopup(popupHtml, { maxWidth: 280 })
+      );
+    });
+
+    // Zoom to fit all markers
+    if (markersRef.current.length > 0) {
+      map.fitBounds(L.featureGroup(markersRef.current).getBounds().pad(0.2));
+    }
+  }, [locationsByBenefit]);
+
+  // Count total locations
+  const totalLocations = Object.values(locationsByBenefit)
+    .reduce((sum, locs) => sum + (locs || []).length, 0);
+
+  return (
+    <div className="map-panel">
+      <div className="map-header">
+        <span className="map-title">Service Locations</span>
+        {totalLocations > 0 && (
+          <span className="location-count">{totalLocations} offices</span>
+        )}
+      </div>
+
+      {!hasQueried && (
+        <div className="map-empty">
+          <div className="map-empty-icon">🗺️</div>
+          <div className="map-empty-text">
+            Ask a question to see<br/>nearby service locations
+          </div>
+        </div>
+      )}
+
+      <div id="map" ref={mapRef} />
+    </div>
+  );
+}
+
+// ── BENEFIT CHIP ──────────────────────────────────────────────────────────────
+function BenefitChip({ benefit, isActive, onClick }) {
+  return (
+    <button className={`benefit-chip ${isActive ? 'active' : ''}`} onClick={onClick}>
+      <span className="dot" style={{ background: benefit.color }} />
+      {benefit.name}
+    </button>
+  );
+}
+
+// ── DETECTED BENEFITS BADGE ───────────────────────────────────────────────────
+function DetectedBadge({ benefitTypes, benefits }) {
+  if (!benefitTypes || benefitTypes.length === 0) return null;
+  const names = benefitTypes.map(bt => {
+    const b = benefits.find(x => x.id === bt || x.key === bt);
+    return b ? b.name : bt;
+  });
+  return (
+    <div className="detected-badge">
+      🔍 Checking: {names.join(', ')}
+    </div>
+  );
+}
+
+// ── MESSAGE ───────────────────────────────────────────────────────────────────
+function Message({ msg, onShowMap, benefits }) {
+  return (
+    <div className="message">
+      <div className={`message-label ${msg.role}`}>
+        {msg.role === 'user' ? 'You' : 'Compass NYC'}
+      </div>
+
+      {/* Show which benefits are being checked while streaming */}
+      {msg.role === 'ai' && msg.streaming && msg.detectedBenefits && (
+        <DetectedBadge benefitTypes={msg.detectedBenefits} benefits={benefits} />
+      )}
+
+      <div className={`message-bubble ${msg.role} ${msg.streaming ? 'streaming' : ''}`}>
+        {msg.content || ' '}
+      </div>
+
+      {/* Show locations badge after response is done */}
+      {msg.locationsByBenefit && Object.keys(msg.locationsByBenefit).length > 0 && !msg.streaming && (
+        <span className="locations-badge" onClick={() => onShowMap(msg.locationsByBenefit)}>
+          📍 {Object.values(msg.locationsByBenefit).reduce((s, l) => s + (l||[]).length, 0)} offices found — view on map
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
+function App() {
+  const [messages, setMessages]           = useState([]);
+  const [input, setInput]                 = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [benefits, setBenefits]           = useState([]);
+  const [conversationId, setConvId]       = useState(null);
+  const [locationsByBenefit, setLocations]= useState({});
+  const [hasQueried, setHasQueried]       = useState(false);
+  const messagesEndRef                    = useRef(null);
+  const textareaRef                       = useRef(null);
+
+  // ── Start a conversation on mount ─────────────────────────────────────────
+  const startNewConversation = useCallback(async () => {
+    try {
+      const res  = await fetch(`${API_BASE}/api/conversations/new`, { method: 'POST' });
+      const data = await res.json();
+      setConvId(data.conversation_id);
+      return data.conversation_id;
+    } catch {
+      console.error('Could not start conversation');
+      return null;
+    }
+  }, []);
+
+  // ── Fetch benefits + init conversation on first load ──────────────────────
+  useEffect(() => {
+    // Fetch benefits list
+    fetch(`${API_BASE}/api/benefits`)
+      .then(r => r.json())
+      .then(data => setBenefits(data))
+      .catch(() => setBenefits([{
+        id: 'snap', key: 'snap', name: 'SNAP (Food Stamps)',
+        category: 'food', color: '#4fd1a5',
+        description: 'Supplemental Nutrition Assistance Program'
+      }]));
+
+    // Init first conversation
+    startNewConversation();
+  }, []);
+
+  // ── Auto-scroll ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // ── New Chat handler ───────────────────────────────────────────────────────
+  const handleNewChat = useCallback(async () => {
+    const newId = await startNewConversation();
+    setMessages([]);
+    setLocations({});
+    setHasQueried(false);
+    setInput('');
+  }, [startNewConversation]);
+
+  // ── Send query ─────────────────────────────────────────────────────────────
+  const sendQuery = useCallback(async (queryText) => {
+    if (!queryText.trim() || loading) return;
+
+    // Ensure we have a conversation ID
+    let convId = conversationId;
+    if (!convId) {
+      convId = await startNewConversation();
+    }
+
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: queryText },
+      { role: 'ai', content: '', streaming: true, locationsByBenefit: {}, detectedBenefits: [] },
+    ]);
+    setInput('');
+    setLoading(true);
+    setHasQueried(true);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: queryText,          // ← was "query"
+          conversation_id: convId,     // ← new: maintains context
+          // benefit_types omitted → auto-detected by backend
+        }),
+      });
+
+      const reader  = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText  = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const lines = decoder.decode(value).split('\n').filter(l => l.startsWith('data: '));
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            // ── New event: which benefits are being checked
+            if (data.type === 'benefit_detected') {
+              setMessages(prev => {
+                const u = [...prev];
+                u[u.length - 1] = { ...u[u.length - 1], detectedBenefits: data.benefit_types };
+                return u;
+              });
+            }
+
+            // ── Locations — now keyed by benefit type
+            if (data.type === 'locations') {
+              const locs = data.locations_by_benefit || {};
+              setLocations(locs);
+              setMessages(prev => {
+                const u = [...prev];
+                u[u.length - 1] = { ...u[u.length - 1], locationsByBenefit: locs };
+                return u;
+              });
+            }
+
+            // ── Streaming tokens
+            if (data.type === 'token') {
+              fullText += data.token;
+              setMessages(prev => {
+                const u = [...prev];
+                u[u.length - 1] = { ...u[u.length - 1], content: fullText, streaming: true };
+                return u;
+              });
+            }
+
+            // ── Done — update conversation ID in case it changed
+            if (data.type === 'done') {
+              if (data.conversation_id) setConvId(data.conversation_id);
+              setMessages(prev => {
+                const u = [...prev];
+                u[u.length - 1] = { ...u[u.length - 1], streaming: false };
+                return u;
+              });
+            }
+
+            // ── Error from backend
+            if (data.type === 'error') {
+              setMessages(prev => {
+                const u = [...prev];
+                u[u.length - 1] = {
+                  ...u[u.length - 1],
+                  content: `⚠️ Backend error: ${data.error}`,
+                  streaming: false,
+                };
+                return u;
+              });
+            }
+
+          } catch {}
+        }
+      }
+    } catch {
+      setMessages(prev => {
+        const u = [...prev];
+        u[u.length - 1] = {
+          ...u[u.length - 1],
+          content: `⚠️ Could not connect to Compass NYC backend.\n\nMake sure the API is running:\n  uvicorn api:app --host 0.0.0.0 --port 8000`,
+          streaming: false,
+        };
+        return u;
+      });
+    }
+
+    setLoading(false);
+  }, [loading, conversationId, startNewConversation]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(input); }
+  };
+
+  const handleTextareaChange = (e) => {
+    setInput(e.target.value);
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  };
+
+  return (
+    <>
+      {/* Top Bar */}
+      <div className="topbar">
+        <div className="logo">
+          <div className="logo-mark">C</div>
+          <div>
+            <span className="logo-text">Compass NYC</span>
+            <span className="logo-sub">Social Services Navigator</span>
+          </div>
+        </div>
+        <div className="topbar-right">
+          <button className="new-chat-btn" onClick={handleNewChat} disabled={loading}>
+            + New Chat
+          </button>
+          <div className="status-pill">
+            <span className="status-dot" />
+            Local · Private · On-device
+          </div>
+        </div>
+      </div>
+
+      {/* Benefit pills — display only, auto-detection handles routing */}
+      {benefits.length > 0 && (
+        <div className="benefit-bar">
+          <span className="benefit-bar-label">Programs</span>
+          {benefits.map(b => (
+            <div key={b.id || b.key} className="benefit-chip">
+              <span className="dot" style={{ background: b.color }} />
+              {b.name}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Main split layout */}
+      <div className="main">
+        <div className="chat-panel">
+          <div className="messages">
+
+            {messages.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">🧭</div>
+                <div className="empty-title">How can I help you today?</div>
+                <div className="empty-sub">
+                  Describe your situation and I'll find every benefit you qualify for — and exactly where to apply.
+                </div>
+                <div className="example-queries">
+                  {EXAMPLES.map((ex, i) => (
+                    <button key={i} className="example-query" onClick={() => sendQuery(ex)}>{ex}</button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                {messages.map((msg, i) => (
+                  <Message key={i} msg={msg} onShowMap={setLocations} benefits={benefits} />
+                ))}
+                {loading && messages[messages.length - 1]?.role !== 'ai' && (
+                  <div className="thinking">
+                    <div className="thinking-dots"><span /><span /><span /></div>
+                    Searching eligibility rules...
+                  </div>
+                )}
+              </>
+            )}
+            <div ref={messagesEndRef} style={{ height: 20 }} />
+          </div>
+
+          {/* Input Area */}
+          <div className="input-area">
+            <div className="input-row">
+              <div className="input-wrap">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={handleTextareaChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Describe your situation — income, household size, borough..."
+                  rows={1}
+                  disabled={loading}
+                />
+              </div>
+              <button
+                className="send-btn"
+                onClick={() => sendQuery(input)}
+                disabled={loading || !input.trim()}
+                title="Send (or press Enter)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="#0f1117" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            </div>
+            <div className="input-hint">
+              ↵ Enter to send · Shift+↵ for new line · All data stays on-device
+            </div>
+          </div>
+        </div>
+
+        {/* Map — now receives locationsByBenefit object */}
+        <MapView locationsByBenefit={locationsByBenefit} hasQueried={hasQueried} />
+      </div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

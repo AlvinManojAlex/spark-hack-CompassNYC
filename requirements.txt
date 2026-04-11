@@ -8,6 +8,9 @@ sentence-transformers>=2.2.0
 # API calls
 requests>=2.28.0
 
+flask>=2.3.0
+flask-cors>=4.0.0
+
 # Optional but recommended for production
 # pandas>=2.0.0  # If you want to use RAPIDS-style data processing later
 # torch>=2.0.0   # Will be auto-installed by sentence-transformers, but explicit is better

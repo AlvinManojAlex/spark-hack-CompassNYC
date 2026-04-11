@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compass NYC</title>
+
+<!-- React -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+<!-- Leaflet map -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #181c27;
+    --border:   #252a38;
+    --muted:    #3a405a;
+    --text:     #e8eaf0;
+    --text-dim: #7a82a0;
+    --accent:   #f5c542;
+    --accent2:  #4fd1a5;
+    --user-bg:  #1e2235;
+    --ai-bg:    #141824;
+    --danger:   #f56565;
+    --snap:     #4fd1a5;
+    --food:     #f5c542;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── TOP BAR ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 56px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-mark {
+    width: 28px;
+    height: 28px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Serif Display', serif;
+    font-size: 16px;
+    color: #0f1117;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .logo-text {
+    font-family: 'DM Serif Display', serif;
+    font-size: 18px;
+    color: var(--text);
+    letter-spacing: -0.3px;
+  }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 400;
+    margin-left: 4px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent2);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── BENEFIT SELECTOR ── */
+  .benefit-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+
+  .benefit-bar-label {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    white-space: nowrap;
+    margin-right: 4px;
+  }
+
+  .benefit-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .15s;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .benefit-chip:hover {
+    border-color: var(--muted);
+    color: var(--text);
+  }
+
+  .benefit-chip.active {
+    border-color: var(--accent);
+    background: rgba(245, 197, 66, 0.08);
+    color: var(--accent);
+  }
+
+  .benefit-chip .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── MAIN LAYOUT ── */
+  .main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── CHAT PANEL ── */
+  .chat-panel {
+    width: 44%;
+    min-width: 380px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--bg);
+  }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) transparent;
+  }
+
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+
+  /* Empty state */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 32px;
+    text-align: center;
+    gap: 12px;
+  }
+
+  .empty-icon {
+    width: 52px;
+    height: 52px;
+    background: rgba(245, 197, 66, 0.1);
+    border: 1px solid rgba(245, 197, 66, 0.2);
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    margin-bottom: 4px;
+  }
+
+  .empty-title {
+    font-family: 'DM Serif Display', serif;
+    font-size: 22px;
+    color: var(--text);
+    line-height: 1.2;
+  }
+
+  .empty-sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    max-width: 280px;
+  }
+
+  .example-queries {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .example-query {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text-dim);
+    cursor: pointer;
+    text-align: left;
+    transition: all .15s;
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.5;
+  }
+
+  .example-query:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: rgba(245, 197, 66, 0.04);
+  }
+
+  /* Messages */
+  .message {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    animation: fadeUp .2s ease-out;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .message-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .message-label.user { color: var(--text-dim); }
+  .message-label.ai   { color: var(--accent2); }
+
+  .message-bubble {
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    line-height: 1.65;
+    white-space: pre-wrap;
+  }
+
+  .message-bubble.user {
+    background: var(--user-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 12px 12px 4px 12px;
+  }
+
+  .message-bubble.ai {
+    background: var(--ai-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 12px 12px 12px 4px;
+  }
+
+  .message-bubble.ai.streaming::after {
+    content: '▋';
+    color: var(--accent);
+    animation: blink .7s infinite;
+    font-size: 11px;
+    margin-left: 2px;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0; }
+  }
+
+  .locations-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--accent2);
+    font-family: 'DM Mono', monospace;
+    background: rgba(79, 209, 165, 0.08);
+    border: 1px solid rgba(79, 209, 165, 0.2);
+    padding: 3px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+  }
+
+  .locations-badge:hover { background: rgba(79, 209, 165, 0.15); }
+
+  /* Thinking indicator */
+  .thinking {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 8px 0;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .thinking-dots span {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: dotBounce 1.2s infinite;
+    margin-right: 3px;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: .2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: .4s; }
+
+  @keyframes dotBounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: .4; }
+    40%           { transform: translateY(-4px); opacity: 1; }
+  }
+
+  /* ── INPUT AREA ── */
+  .input-area {
+    padding: 16px 20px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  .input-wrap {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    transition: border-color .15s;
+  }
+
+  .input-wrap:focus-within {
+    border-color: var(--accent);
+  }
+
+  .input-wrap textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 13.5px;
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1.5;
+    resize: none;
+    min-height: 42px;
+    max-height: 120px;
+  }
+
+  .input-wrap textarea::placeholder { color: var(--text-dim); }
+
+  .send-btn {
+    width: 42px;
+    height: 42px;
+    background: var(--accent);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .15s;
+    flex-shrink: 0;
+  }
+
+  .send-btn:hover   { background: #e6b835; transform: translateY(-1px); }
+  .send-btn:active  { transform: translateY(0); }
+  .send-btn:disabled { background: var(--muted); cursor: not-allowed; transform: none; }
+
+  .send-btn svg { width: 16px; height: 16px; }
+
+  .input-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 8px;
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ── MAP PANEL ── */
+  .map-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: #0d1019;
+  }
+
+  .map-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 500;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(13,16,25,0.95) 0%, transparent 100%);
+    pointer-events: none;
+  }
+
+  .map-title {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: 'DM Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+  }
+
+  .location-count {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: var(--accent2);
+    background: rgba(79, 209, 165, 0.1);
+    border: 1px solid rgba(79, 209, 165, 0.2);
+    padding: 3px 10px;
+    border-radius: 20px;
+    pointer-events: auto;
+  }
+
+  #map {
+    width: 100%;
+    height: 100%;
+    z-index: 1;
+  }
+
+  /* Leaflet overrides for dark theme */
+  .leaflet-tile-pane { filter: brightness(0.7) saturate(0.6); }
+  .leaflet-control-zoom a {
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    border-color: var(--border) !important;
+  }
+  .leaflet-control-zoom a:hover { background: var(--bg) !important; }
+  .leaflet-control-attribution { display: none; }
+
+  /* Custom popup */
+  .leaflet-popup-content-wrapper {
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+    color: var(--text) !important;
+    font-family: 'DM Sans', sans-serif !important;
+    padding: 0 !important;
+  }
+
+  .leaflet-popup-tip { background: var(--border) !important; }
+  .leaflet-popup-close-button { color: var(--text-dim) !important; padding: 6px 8px !important; }
+
+  .popup-inner {
+    padding: 14px 16px;
+    min-width: 220px;
+  }
+
+  .popup-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 8px;
+    line-height: 1.3;
+  }
+
+  .popup-row {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+
+  .popup-row-icon { color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+
+  .popup-tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(79, 209, 165, 0.1);
+    color: var(--accent2);
+    margin-top: 6px;
+  }
+
+  /* No map data placeholder */
+  .map-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 10;
+    background: #0d1019;
+    pointer-events: none;
+  }
+
+  .map-empty-icon {
+    font-size: 36px;
+    opacity: .3;
+  }
+
+  .map-empty-text {
+    font-size: 13px;
+    color: var(--text-dim);
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* Error */
+  .error-msg {
+    background: rgba(245, 101, 101, 0.08);
+    border: 1px solid rgba(245, 101, 101, 0.25);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--danger);
+    font-family: 'DM Mono', monospace;
+  }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const API_BASE = "http://100.104.220.68:8000";
+
+// ── BOROUGH COORDINATES ─────────────────────────────────────────────────────
+const NYC_CENTER = [40.7128, -74.0060];
+const BOROUGH_CENTERS = {
+  brooklyn:       [40.6782, -73.9442],
+  manhattan:      [40.7831, -73.9712],
+  queens:         [40.7282, -73.7949],
+  bronx:          [40.8448, -73.8648],
+  "staten island":[40.5795, -74.1502],
+};
+
+// ── EXAMPLE QUERIES ─────────────────────────────────────────────────────────
+const EXAMPLES = [
+  "I live in Brooklyn with my two kids. We're a family of 3 and I make about $2,200/month. Do I qualify for SNAP?",
+  "I'm a single person in the Bronx making $1,400 a month. What food assistance can I get?",
+  "I'm 68 years old in Queens on Social Security of $900/month. Do I qualify for food stamps?",
+  "I'm undocumented in Manhattan but my kids are US citizens. Can my children get food assistance?",
+];
+
+// ── MAP COMPONENT ────────────────────────────────────────────────────────────
+function MapView({ locations, hasQueried }) {
+  const mapRef = useRef(null);
+  const leafletRef = useRef(null);
+  const markersRef = useRef([]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (leafletRef.current) return; // already initialized
+
+    leafletRef.current = L.map(mapRef.current, {
+      center: NYC_CENTER,
+      zoom: 11,
+      zoomControl: true,
+    });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap"
+    }).addTo(leafletRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!leafletRef.current) return;
+    const map = leafletRef.current;
+
+    // Clear old markers
+    markersRef.current.forEach(m => map.removeLayer(m));
+    markersRef.current = [];
+
+    const locationsWithCoords = locations.filter(l => l.latitude && l.longitude);
+
+    if (locationsWithCoords.length === 0) {
+      map.setView(NYC_CENTER, 11);
+      return;
+    }
+
+    // Add markers
+    locationsWithCoords.forEach(loc => {
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:14px; height:14px;
+          background:#f5c542;
+          border:2px solid #0f1117;
+          border-radius:50%;
+          box-shadow:0 0 0 3px rgba(245,197,66,0.3), 0 2px 8px rgba(0,0,0,0.5);
+          cursor:pointer;
+        "></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+
+      const popupHtml = `
+        <div class="popup-inner">
+          <div class="popup-name">${loc.name || 'Service Location'}</div>
+          <div class="popup-row">
+            <span class="popup-row-icon">📍</span>
+            <span>${loc.address || ''}, ${loc.borough || ''} ${loc.zip || ''}</span>
+          </div>
+          ${loc.phone ? `<div class="popup-row">
+            <span class="popup-row-icon">📞</span>
+            <span>${loc.phone}</span>
+          </div>` : ''}
+          ${loc.hours ? `<div class="popup-row">
+            <span class="popup-row-icon">🕐</span>
+            <span>${loc.hours}</span>
+          </div>` : ''}
+          ${loc.languages ? `<div class="popup-row">
+            <span class="popup-row-icon">💬</span>
+            <span>${loc.languages}</span>
+          </div>` : ''}
+          ${loc.walk_in === 'Yes' ? '<span class="popup-tag">✓ Walk-in welcome</span>' : ''}
+        </div>
+      `;
+
+      const marker = L.marker([loc.latitude, loc.longitude], { icon })
+        .addTo(map)
+        .bindPopup(popupHtml, { maxWidth: 280 });
+
+      markersRef.current.push(marker);
+    });
+
+    // Fit map to markers
+    const group = L.featureGroup(markersRef.current);
+    map.fitBounds(group.getBounds().pad(0.2));
+
+  }, [locations]);
+
+  return (
+    <div className="map-panel">
+      <div className="map-header">
+        <span className="map-title">Service Locations</span>
+        {locations.length > 0 && (
+          <span className="location-count">{locations.length} offices</span>
+        )}
+      </div>
+
+      {!hasQueried && (
+        <div className="map-empty">
+          <div className="map-empty-icon">🗺️</div>
+          <div className="map-empty-text">
+            Ask a question to see<br/>nearby service locations
+          </div>
+        </div>
+      )}
+
+      <div id="map" ref={mapRef} />
+    </div>
+  );
+}
+
+// ── BENEFIT CHIP ─────────────────────────────────────────────────────────────
+function BenefitChip({ benefit, isActive, onClick }) {
+  return (
+    <button
+      className={`benefit-chip ${isActive ? 'active' : ''}`}
+      onClick={onClick}
+    >
+      <span className="dot" style={{ background: benefit.color }} />
+      {benefit.name}
+    </button>
+  );
+}
+
+// ── MESSAGE ──────────────────────────────────────────────────────────────────
+function Message({ msg, onShowMap }) {
+  return (
+    <div className="message">
+      <div className={`message-label ${msg.role}`}>
+        {msg.role === 'user' ? 'You' : 'Compass NYC'}
+      </div>
+      <div className={`message-bubble ${msg.role} ${msg.streaming ? 'streaming' : ''}`}>
+        {msg.content || ' '}
+      </div>
+      {msg.locations && msg.locations.length > 0 && !msg.streaming && (
+        <span className="locations-badge" onClick={() => onShowMap(msg.locations)}>
+          📍 {msg.locations.length} offices found — view on map
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ── MAIN APP ─────────────────────────────────────────────────────────────────
+function App() {
+  const [messages, setMessages]     = useState([]);
+  const [input, setInput]           = useState('');
+  const [loading, setLoading]       = useState(false);
+  const [benefits, setBenefits]     = useState([]);
+  const [activeBenefit, setActive]  = useState('snap');
+  const [mapLocations, setMapLocs]  = useState([]);
+  const [hasQueried, setHasQueried] = useState(false);
+  const messagesEndRef              = useRef(null);
+  const textareaRef                 = useRef(null);
+
+  // Fetch available benefits on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/benefits`)
+      .then(r => r.json())
+      .then(data => setBenefits(data))
+      .catch(() => {
+        // Fallback if API not running
+        setBenefits([{
+          key: 'snap', name: 'SNAP (Food Stamps)',
+          category: 'food', color: '#4fd1a5',
+          description: 'Supplemental Nutrition Assistance Program'
+        }]);
+      });
+  }, []);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendQuery = useCallback(async (queryText) => {
+    if (!queryText.trim() || loading) return;
+
+    const userMsg = { role: 'user', content: queryText };
+    const aiMsg   = { role: 'ai', content: '', streaming: true, locations: [] };
+
+    setMessages(prev => [...prev, userMsg, aiMsg]);
+    setInput('');
+    setLoading(true);
+    setHasQueried(true);
+
+    const aiIndex = messages.length + 1;
+
+    try {
+      const response = await fetch(`${API_BASE}/query/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: queryText, benefit_type: activeBenefit }),
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullText = '';
+      let locations = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const raw = decoder.decode(value);
+        const lines = raw.split('\n').filter(l => l.startsWith('data: '));
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === 'locations') {
+              locations = data.locations || [];
+              setMapLocs(locations);
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  locations,
+                };
+                return updated;
+              });
+            }
+
+            if (data.type === 'token') {
+              fullText += data.token;
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  content: fullText,
+                  streaming: true,
+                };
+                return updated;
+              });
+            }
+
+            if (data.type === 'done') {
+              setMessages(prev => {
+                const updated = [...prev];
+                updated[updated.length - 1] = {
+                  ...updated[updated.length - 1],
+                  streaming: false,
+                };
+                return updated;
+              });
+            }
+          } catch {}
+        }
+      }
+    } catch (err) {
+      setMessages(prev => {
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          content: `⚠️ Could not connect to Compass NYC backend.\n\nMake sure the API is running:\n  uvicorn api:app --host 0.0.0.0 --port 8000`,
+          streaming: false,
+        };
+        return updated;
+      });
+    }
+
+    setLoading(false);
+  }, [loading, messages.length, activeBenefit]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendQuery(input);
+    }
+  };
+
+  const handleTextareaChange = (e) => {
+    setInput(e.target.value);
+    // Auto-resize
+    e.target.style.height = 'auto';
+    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  };
+
+  return (
+    <>
+      {/* Top Bar */}
+      <div className="topbar">
+        <div className="logo">
+          <div className="logo-mark">C</div>
+          <div>
+            <span className="logo-text">Compass NYC</span>
+            <span className="logo-sub">Social Services Navigator</span>
+          </div>
+        </div>
+        <div className="status-pill">
+          <span className="status-dot" />
+          Local · Private · On-device
+        </div>
+      </div>
+
+      {/* Benefit Selector */}
+      {benefits.length > 0 && (
+        <div className="benefit-bar">
+          <span className="benefit-bar-label">Benefit</span>
+          {benefits.map(b => (
+            <BenefitChip
+              key={b.key}
+              benefit={b}
+              isActive={activeBenefit === b.key}
+              onClick={() => setActive(b.key)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Main */}
+      <div className="main">
+
+        {/* Chat Panel */}
+        <div className="chat-panel">
+          <div className="messages">
+            {messages.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">🧭</div>
+                <div className="empty-title">How can I help you today?</div>
+                <div className="empty-sub">
+                  Describe your situation and I'll find the benefits you qualify for — and exactly where to apply.
+                </div>
+                <div className="example-queries">
+                  {EXAMPLES.map((ex, i) => (
+                    <button key={i} className="example-query" onClick={() => sendQuery(ex)}>
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                {messages.map((msg, i) => (
+                  <Message key={i} msg={msg} onShowMap={setMapLocs} />
+                ))}
+                {loading && messages[messages.length - 1]?.role !== 'ai' && (
+                  <div className="thinking">
+                    <div className="thinking-dots">
+                      <span /><span /><span />
+                    </div>
+                    Searching eligibility rules...
+                  </div>
+                )}
+              </>
+            )}
+            <div ref={messagesEndRef} style={{ height: 20 }} />
+          </div>
+
+          {/* Input */}
+          <div className="input-area">
+            <div className="input-row">
+              <div className="input-wrap">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={handleTextareaChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Describe your situation — income, household size, borough..."
+                  rows={1}
+                  disabled={loading}
+                />
+              </div>
+              <button
+                className="send-btn"
+                onClick={() => sendQuery(input)}
+                disabled={loading || !input.trim()}
+                title="Send (or press Enter)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="#0f1117" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
+            </div>
+            <div className="input-hint">
+              ↵ Enter to send · Shift+↵ for new line · All data stays on-device
+            </div>
+          </div>
+        </div>
+
+        {/* Map Panel */}
+        <MapView locations={mapLocations} hasQueried={hasQueried} />
+      </div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
