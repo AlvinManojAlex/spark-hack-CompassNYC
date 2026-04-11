@@ -21,27 +21,25 @@ class LLMInterface:
         self.url = OLLAMA_URL
         print(f"[LLM] Initialized with model: {self.model}")
     
-    def generate(self, prompt: str, temperature: float = LLM_TEMPERATURE, 
-                 max_tokens: int = LLM_MAX_TOKENS, stream: bool = False, benchmark = None) -> str:
+    def generate(
+            self,
+            prompt: str,
+            temperature: float = LLM_TEMPERATURE,
+            max_tokens: int = LLM_MAX_TOKENS,
+            stream: bool = False,
+            benchmark=None,
+        ) -> str:
         """
         Call Ollama to generate a response.
-        
-        Args:
-            prompt: Full prompt text
-            temperature: Lower = more factual, higher = more creative
-            max_tokens: Max length of response
-            stream: If True, print tokens as they generate (better UX for large models)
-        
-        Returns:
-            Generated text
         """
         print(f"[LLM] Generating with {self.model}...")
 
         if benchmark:
             benchmark.start("llm_api_call")
-        
+
         start_time = time.time()
-        
+        full_response = ""  # Ensure it's always defined
+
         try:
             response = requests.post(
                 self.url,
@@ -52,19 +50,18 @@ class LLMInterface:
                     "options": {
                         "temperature": temperature,
                         "num_predict": max_tokens,
-                    }
+                    },
                 },
-                stream=stream,  # Enable streaming in requests
-                timeout=300  # 5 minutes for large models like Qwen 72B
+                stream=stream,
+                timeout=300,
             )
             response.raise_for_status()
-            
+
             if stream:
-                # Stream tokens as they arrive
                 import json
-                full_response = ""
+
                 print()  # New line before streaming output
-                
+
                 for line in response.iter_lines():
                     if line:
                         try:
@@ -72,27 +69,23 @@ class LLMInterface:
                             if "response" in chunk:
                                 token = chunk["response"]
                                 full_response += token
-                                print(token, end="", flush=True)  # Print immediately
+                                print(token, end="", flush=True)
                         except json.JSONDecodeError:
                             continue
-                
-                print()  # New line after streaming
-                print(f"[LLM] Generated {len(full_response)} characters")
-                return full_response
-            else:
-                # Non-streaming (original behavior)
-                result = response.json()["response"]
-                print(f"[LLM] Generated {len(result)} characters")
-                return result
-            
-            end_time = time.time()
-            latency = end_time - start_time
 
-            # metrics
+                print()  # New line after streaming
+
+            else:
+                result = response.json()
+                full_response = result.get("response", "")
+
+            # ---- Timing & Metrics (NOW ALWAYS RUNS) ----
+            latency = time.time() - start_time
+
             input_chars = len(prompt)
             output_chars = len(full_response)
 
-            # Rough token estimate (works fine for benchmarking)
+            # Rough token estimate
             input_tokens = input_chars / 4
             output_tokens = output_chars / 4
 
@@ -101,17 +94,18 @@ class LLMInterface:
                 benchmark.log("llm_latency", latency)
                 benchmark.log("input_tokens", int(input_tokens))
                 benchmark.log("output_tokens", int(output_tokens))
-                benchmark.log("tokens_per_sec", output_tokens / latency if latency > 0 else 0)
-        
+                benchmark.log(
+                    "tokens_per_sec",
+                    output_tokens / latency if latency > 0 else 0,
+                )
+
             print(f"[LLM] Generated {output_chars} characters in {latency:.2f}s")
 
             return full_response
-            
-        except requests.exceptions.RequestException as e:
-            if benchmark:
-                benchmark.log("llm_error", str(e))
-            print(f"[LLM] ERROR: {e}")
-            return f"Error calling LLM: {e}"
+
+        except requests.RequestException as e:
+            print(f"[LLM ERROR] {e}")
+            return ""
     
     def build_eligibility_prompt(self, 
                                  benefit_type: str,
