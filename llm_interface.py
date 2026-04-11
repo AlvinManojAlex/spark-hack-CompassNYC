@@ -80,7 +80,7 @@ class LLMInterface:
             else:
                 # Non-streaming (original behavior)
                 result = response.json()["response"]
-                full_response = result.get("response", "")
+                full_response = result["response"] if isinstance(result, dict) else result
             
             latency = time.time() - start_time
 

@@ -8,7 +8,7 @@ Adding a new benefit = add one entry to BENEFITS dict.
 # ── MODEL CONFIGURATION ───────────────────────────────────────────────────────
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5:72b"  # Upgrade to "llama3.1:70b" or "nemotron-51b-instruct" for better reasoning
+OLLAMA_MODEL = "qwen2.5:7b"  # Upgrade to "llama3.1:70b" or "nemotron-51b-instruct" for better reasoning
 EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
 
 # RAG settings
