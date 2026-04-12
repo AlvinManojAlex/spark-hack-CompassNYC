@@ -6,12 +6,13 @@ Retrieves relevant chunks from vector DB and reasons over them.
 """
 
 import numpy as np
+import time
 from typing import List, Dict, Tuple
 from sentence_transformers import SentenceTransformer
 
 from config import EMBED_MODEL_NAME, TOP_K_CHUNKS
 from database import DatabaseManager
-
+from benchmark import Benchmark
 
 # ── TEXT CHUNKING ─────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ class EligibilityEngine:
         self.embed_model = SentenceTransformer(EMBED_MODEL_NAME)
         print(f"[Eligibility] Initialized with model: {EMBED_MODEL_NAME}")
     
-    def retrieve(self, benefit_type: str, query: str, top_k: int = TOP_K_CHUNKS) -> List[Dict]:
+    def retrieve(self, benefit_type: str, query: str, top_k: int = TOP_K_CHUNKS, benchmark = None) -> List[Dict]:
         """
         Retrieve the most relevant eligibility chunks for a query.
         
@@ -57,21 +58,45 @@ class EligibilityEngine:
         Returns:
             List of dicts with keys: chunk (text), score (similarity)
         """
+
+        total_start = time.time()
+
         # Load stored embeddings
-        chunks, embeddings = self.db.load_embeddings(benefit_type)
+        load_start = time.time()
+        chunks, embeddings = self.db.load_embeddings(benefit_type, benchmark = benchmark)
+        load_time = time.time() - load_start
         
         if len(chunks) == 0:
             print(f"[Eligibility] WARNING: No embeddings found for '{benefit_type}'")
             return []
         
+        if benchmark:
+            benchmark.log("retrieval_db_load_time", load_time)
+            benchmark.log("num_chunks_in_db", len(chunks))
+        
         # Embed query
+        embed_start = time.time()
         query_embedding = self.embed_model.encode([query], convert_to_numpy=True)
+        embed_time = time.time() - embed_start
+
+        if benchmark:
+            benchmark.log("query_embedding_time", embed_time)
         
         # Cosine similarity (embeddings are already normalized)
+        sim_start = time.time()
         scores = np.dot(embeddings, query_embedding.T).flatten()
+        sim_time = time.time() - sim_start
+
+        if benchmark:
+            benchmark.log("similarity_compute_time", sim_time)
         
         # Get top K
+        topk_start = time.time()
         top_indices = scores.argsort()[-top_k:][::-1]
+        topk_time = time.time() - topk_start
+
+        if benchmark:
+            benchmark.log("topk_selection_time", topk_time)
         
         results = []
         for idx in top_indices:
@@ -81,6 +106,11 @@ class EligibilityEngine:
             })
             print(f"[RAG] Retrieved chunk #{idx} for '{benefit_type}' "
                   f"(score: {scores[idx]:.3f}): {chunks[idx][:60]}...")
+        
+        total_time = time.time() - total_start
+
+        if benchmark:
+            benchmark.log("retrieval_total_time", total_time)
         
         return results
     

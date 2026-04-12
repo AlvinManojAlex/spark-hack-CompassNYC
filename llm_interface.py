@@ -6,9 +6,10 @@ Builds prompts and manages generation.
 """
 
 import requests
+import time
 from typing import Dict, List, Optional
 from config import OLLAMA_URL, OLLAMA_MODEL, LLM_TEMPERATURE, LLM_MAX_TOKENS, BENEFITS
-
+from benchmark import Benchmark
 
 class LLMInterface:
     """
@@ -21,7 +22,7 @@ class LLMInterface:
         print(f"[LLM] Initialized with model: {self.model}")
     
     def generate(self, prompt: str, temperature: float = LLM_TEMPERATURE, 
-                 max_tokens: int = LLM_MAX_TOKENS, stream: bool = True) -> str:
+                 max_tokens: int = LLM_MAX_TOKENS, stream: bool = False, benchmark = None) -> str:
         """
         Call Ollama to generate a response.
         
@@ -35,6 +36,12 @@ class LLMInterface:
             Generated text
         """
         print(f"[LLM] Generating with {self.model}...")
+
+        if benchmark:
+            benchmark.start("llm_api_call")
+        
+        start_time = time.time()
+        full_response = ""
         
         try:
             response = requests.post(
@@ -56,7 +63,6 @@ class LLMInterface:
             if stream:
                 # Stream tokens as they arrive
                 import json
-                full_response = ""
                 print()  # New line before streaming output
                 
                 for line in response.iter_lines():
@@ -71,15 +77,35 @@ class LLMInterface:
                             continue
                 
                 print()  # New line after streaming
-                print(f"[LLM] Generated {len(full_response)} characters")
-                return full_response
             else:
                 # Non-streaming (original behavior)
                 result = response.json()["response"]
-                print(f"[LLM] Generated {len(result)} characters")
-                return result
+                full_response = result["response"] if isinstance(result, dict) else result
+            
+            latency = time.time() - start_time
+
+            # metrics
+            input_chars = len(prompt)
+            output_chars = len(full_response)
+
+            # Rough token estimate (works fine for benchmarking)
+            input_tokens = input_chars / 4
+            output_tokens = output_chars / 4
+
+            if benchmark:
+                benchmark.stop("llm_api_call")
+                benchmark.log("llm_latency", latency)
+                benchmark.log("input_tokens", int(input_tokens))
+                benchmark.log("output_tokens", int(output_tokens))
+                benchmark.log("tokens_per_sec", output_tokens / latency if latency > 0 else 0)
+        
+            print(f"[LLM] Generated {output_chars} characters in {latency:.2f}s")
+
+            return full_response
             
         except requests.exceptions.RequestException as e:
+            if benchmark:
+                benchmark.log("llm_error", str(e))
             print(f"[LLM] ERROR: {e}")
             return f"Error calling LLM: {e}"
     
@@ -95,38 +121,38 @@ class LLMInterface:
         """
         benefit_name = BENEFITS[benefit_type]["name"]
         
-        prompt = f"""You are Compass NYC, a helpful AI assistant that guides New Yorkers to social services.
+        prompt = f"""You are Compass NYC, an AI assistant helping New Yorkers access social services.
 
-Your job is to help someone understand if they qualify for {benefit_name} and where to apply.
+Goal: Assess whether the user likely qualifies for {benefit_name} and guide them on next steps.
 
-INSTRUCTIONS:
-1. Based on the ELIGIBILITY RULES below, determine if the user likely qualifies
-2. Explain WHY in plain language, referencing their specific situation
-3. If they qualify:
-   - Tell them what documents to bring
-   - Point them to the nearest office from the list below
-   - Give clear next steps
-4. If they don't qualify or you're unsure:
-   - Explain what's missing or unclear
-   - Suggest what they'd need to qualify OR point them to another service
-5. Be warm, specific, and honest - never guess about rules not in the context
+Instructions:
+- Use ONLY the eligibility rules below.
+- Determine if the user likely qualifies.
+- Explain your reasoning clearly using their situation.
 
-──────────────────────────────────────────────────────────────────────
-ELIGIBILITY RULES FOR {benefit_name.upper()}:
-──────────────────────────────────────────────────────────────────────
+If they likely qualify:
+- List required documents
+- Recommend the nearest service location from the list
+- Provide clear next steps
+
+If they don’t or it’s unclear:
+- Explain what’s missing or uncertain
+- Suggest how they could qualify or alternative services
+
+Style:
+- Be warm, clear, and specific
+- Do not assume rules not provided
+
+--- ELIGIBILITY RULES ({benefit_name.upper()}) ---
 {eligibility_context}
 
-──────────────────────────────────────────────────────────────────────
-SERVICE LOCATIONS:
-──────────────────────────────────────────────────────────────────────
+--- SERVICE LOCATIONS ---
 {location_context}
 
-──────────────────────────────────────────────────────────────────────
-USER'S SITUATION:
-──────────────────────────────────────────────────────────────────────
+--- USER SITUATION ---
 {user_query}
 
-YOUR RESPONSE:"""
+Response:"""
 
         return prompt
     
@@ -147,38 +173,41 @@ YOUR RESPONSE:"""
         for benefit_type, contexts in benefit_contexts.items():
             benefit_name = BENEFITS[benefit_type]["name"]
             sections.append(f"""
-═══════════════════════════════════════════════════════════════
-{benefit_name.upper()}
-═══════════════════════════════════════════════════════════════
+        --- {benefit_name.upper()} ---
 
-ELIGIBILITY RULES:
-{contexts['eligibility']}
+        ELIGIBILITY:
+        {contexts['eligibility']}
 
-LOCATIONS:
-{contexts['locations']}
-""")
-        
-        all_benefits = ", ".join([BENEFITS[bt]["name"] for bt in benefit_contexts.keys()])
-        
-        prompt = f"""You are Compass NYC, a helpful AI assistant that guides New Yorkers to social services.
+        LOCATIONS:
+        {contexts['locations']}
+        """)
 
-The user is asking about their eligibility for multiple programs. You have information about: {all_benefits}.
+        all_benefits = ", ".join(BENEFITS[bt]["name"] for bt in benefit_contexts.keys())
 
-INSTRUCTIONS:
-1. For EACH program, determine if the user likely qualifies based on the rules provided
-2. Explain eligibility for each program separately and clearly
-3. Prioritize the programs that are the best fit for their situation
-4. Point them to specific offices and tell them what documents to bring
-5. Be warm, specific, and organized - use clear headings for each program
+        prompt = f"""You are Compass NYC, an assistant that helps New Yorkers understand social service eligibility and where to apply.
 
-{"".join(sections)}
+        The user may qualify for: {all_benefits}.
 
-──────────────────────────────────────────────────────────────────────
-USER'S SITUATION:
-──────────────────────────────────────────────────────────────────────
-{user_query}
+        TASK:
+        For EACH program below:
+        - Decide if the user likely qualifies using ONLY the provided eligibility rules
+        - Explain briefly why/why not, based on their situation
+        - If eligible: list required documents + nearest location + next steps
+        - If not/unclear: explain what is missing or suggest alternatives
 
-YOUR RESPONSE (organize by program):"""
+        PRIORITIZATION:
+        - Rank programs by best fit for the user
+
+        FORMAT:
+        Use clear headings per program (one section per benefit). Be organized and easy to scan.
+
+        PROGRAM DETAILS:
+        {"".join(sections)}
+
+        --- USER SITUATION ---
+        {user_query}
+
+        RESPONSE:"""
 
         return prompt
     
@@ -186,23 +215,33 @@ YOUR RESPONSE (organize by program):"""
                                 benefit_type: str,
                                 user_query: str,
                                 eligibility_context: str,
-                                location_context: str) -> str:
+                                location_context: str,
+                                benchmark = None) -> str:
         """
         Convenience method: build prompt + generate answer for single benefit.
         """
         prompt = self.build_eligibility_prompt(
             benefit_type, user_query, eligibility_context, location_context
         )
-        return self.generate(prompt)
+
+        if benchmark:
+            benchmark.log("prompt_length_chars", len(prompt))
+
+        return self.generate(prompt, benchmark = benchmark)
     
     def answer_multi_benefit_query(self,
                                    user_query: str,
-                                   benefit_contexts: Dict[str, Dict[str, str]]) -> str:
+                                   benefit_contexts: Dict[str, Dict[str, str]],
+                                   benchmark = None) -> str:
         """
         Convenience method: build prompt + generate answer for multiple benefits.
         """
         prompt = self.build_multi_benefit_prompt(user_query, benefit_contexts)
-        return self.generate(prompt)
+
+        if benchmark:
+            benchmark.log("prompt_length_chars", len(prompt))
+
+        return self.generate(prompt, benchmark = benchmark)
 
 
 if __name__ == "__main__":
