@@ -27,7 +27,8 @@ class ConversationalAgent:
         self.benefit_detector = BenefitDetector()
         self.history: List[Dict[str, str]] = []  # Chat history
         self.fast_mode = fast_mode  # If True, use faster but less comprehensive responses
-        
+        self.detected_borough = None
+
         print("\n" + "="*70)
         print(" COMPASS NYC — Conversational Agent Initialized")
         print("="*70)
@@ -91,6 +92,9 @@ class ConversationalAgent:
             
             # Location context
             borough = self.location_manager.detect_borough(user_message)
+            if detected:
+                self.detected_borough = detected   # save new borough if mentioned
+                borough = self.detected_borough        # always use stored borough as fallback
             locations = self.location_manager.get_locations(benefit_type, borough)
             location_context = self.location_manager.format_for_prompt(locations, max_locations=5)
             

@@ -29,7 +29,12 @@ class LocationManager:
         Returns:
             List of location dicts with all fields
         """
-        locations = self.db.load_locations(benefit_type, borough)
+        if borough:
+            # Filter by borough as before
+            locations = self.db.load_locations(benefit_type, borough)
+        else:
+            # No borough known — return ALL locations so map isn't empty
+            locations = self.db.load_locations(benefit_type, borough=None)
         print(f"[Locations] Loaded {len(locations)} locations for '{benefit_type}'"
               + (f" in {borough}" if borough else ""))
         return locations

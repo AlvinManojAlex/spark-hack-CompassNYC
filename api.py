@@ -234,7 +234,13 @@ async def chat_stream(request: ChatRequest):
                 eligibility_context = agent.eligibility_engine.format_for_prompt(eligibility_chunks)
                 
                 # Locations
-                borough = agent.location_manager.detect_borough(request.message)
+                # Detect from current message
+                detected = agent.location_manager.detect_borough(request.message)
+                if detected:
+                    agent.detected_borough = detected   # persist on the agent
+
+                # Use stored borough (falls back to None → all locations)
+                borough = agent.detected_borough
                 if borough:
                     detected_borough = borough
                 locations = agent.location_manager.get_locations(benefit_type, borough)

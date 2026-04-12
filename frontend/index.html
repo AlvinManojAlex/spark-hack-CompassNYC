@@ -27,7 +27,7 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useCallback } = React;
 
-// ── CONFIG────────────────────────────
+// ── CONFIG — update to your GN100's Tailscale IP ─────────────────────────────
 const API_BASE = "http://100.104.220.68:8000";
 
 // ── BENEFIT COLORS for map pins ───────────────────────────────────────────────
@@ -55,6 +55,7 @@ function MapView({ locationsByBenefit, hasQueried }) {
   const mapRef     = useRef(null);
   const leafletRef = useRef(null);
   const markersRef = useRef([]);
+  const [retry, setRetry] = useState(0);  // forces re-run if map not ready
 
   // Init map once
   useEffect(() => {
@@ -67,65 +68,57 @@ function MapView({ locationsByBenefit, hasQueried }) {
 
   // Update markers when locationsByBenefit changes
   useEffect(() => {
-    if (!leafletRef.current) return;
+    if (!leafletRef.current) {
+      const timer = setTimeout(() => setRetry(r => r + 1), 300);
+      return () => clearTimeout(timer);
+    }
     const map = leafletRef.current;
+    map.invalidateSize();
 
-    // Clear old markers
-    markersRef.current.forEach(m => map.removeLayer(m));
+    markersRef.current.forEach(m => { try { map.removeLayer(m); } catch {} });
     markersRef.current = [];
 
-    // Flatten all locations across benefits, keeping benefit type for color
     const allLocations = Object.entries(locationsByBenefit).flatMap(
       ([benefitType, locs]) =>
-        (locs || [])
-          .filter(l => l.latitude && l.longitude)
-          .map(l => ({ ...l, benefitType }))
+        (locs || []).filter(l => l.latitude && l.longitude).map(l => ({ ...l, benefitType }))
     );
 
-    if (allLocations.length === 0) {
-      map.setView(NYC_CENTER, 11);
-      return;
-    }
+    console.log('[Map] Rendering', allLocations.length, 'markers');
+
+    if (allLocations.length === 0) { map.setView(NYC_CENTER, 11); return; }
 
     allLocations.forEach(loc => {
-      const color = BENEFIT_COLORS[loc.benefitType] || BENEFIT_COLORS.default;
-
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="
-          width:14px; height:14px;
-          background:${color};
-          border:2px solid #0f1117;
-          border-radius:50%;
-          box-shadow:0 0 0 3px ${color}44, 0 2px 8px rgba(0,0,0,0.5);
-          cursor:pointer;
-        "></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-      });
-
-      const popupHtml = `
-        <div class="popup-inner">
-          <div class="popup-name">${loc.name || 'Service Location'}</div>
-          <div class="popup-row"><span class="popup-row-icon">📍</span><span>${loc.address || ''}, ${loc.borough || ''} ${loc.zip || ''}</span></div>
-          ${loc.phone     ? `<div class="popup-row"><span class="popup-row-icon">📞</span><span>${loc.phone}</span></div>` : ''}
-          ${loc.hours     ? `<div class="popup-row"><span class="popup-row-icon">🕐</span><span>${loc.hours}</span></div>` : ''}
-          ${loc.languages ? `<div class="popup-row"><span class="popup-row-icon">💬</span><span>${loc.languages}</span></div>` : ''}
-          ${loc.walk_in === 'Yes' ? '<span class="popup-tag">✓ Walk-in welcome</span>' : ''}
-        </div>`;
-
-      markersRef.current.push(
-        L.marker([loc.latitude, loc.longitude], { icon })
-          .addTo(map)
-          .bindPopup(popupHtml, { maxWidth: 280 })
-      );
+      try {
+        const color = BENEFIT_COLORS[loc.benefitType] || BENEFIT_COLORS.default;
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="width:14px;height:14px;background:${color};border:2px solid #0f1117;border-radius:50%;box-shadow:0 0 0 3px ${color}44,0 2px 8px rgba(0,0,0,0.5);cursor:pointer;"></div>`,
+          iconSize: [14, 14], iconAnchor: [7, 7],
+        });
+        const popupHtml = `
+          <div class="popup-inner">
+            <div class="popup-name">${loc.name || 'Service Location'}</div>
+            <div class="popup-row"><span class="popup-row-icon">\u{1F4CD}</span><span>${loc.address || ''}, ${loc.borough || ''} ${loc.zip || ''}</span></div>
+            ${loc.phone     ? `<div class="popup-row"><span class="popup-row-icon">\u{1F4DE}</span><span>${loc.phone}</span></div>` : ''}
+            ${loc.hours     ? `<div class="popup-row"><span class="popup-row-icon">\u{1F550}</span><span>${loc.hours}</span></div>` : ''}
+            ${loc.languages ? `<div class="popup-row"><span class="popup-row-icon">\u{1F4AC}</span><span>${loc.languages}</span></div>` : ''}
+            ${loc.walk_in === 'Yes' ? '<span class="popup-tag">\u2713 Walk-in welcome</span>' : ''}
+          </div>`;
+        markersRef.current.push(
+          L.marker([loc.latitude, loc.longitude], { icon }).addTo(map).bindPopup(popupHtml, { maxWidth: 280 })
+        );
+      } catch(err) { console.warn('[Map] marker error:', loc.name, err); }
     });
 
-    // Zoom to fit all markers
-    if (markersRef.current.length > 0) {
-      map.fitBounds(L.featureGroup(markersRef.current).getBounds().pad(0.2));
+    try {
+      const bounds = L.featureGroup(markersRef.current).getBounds();
+      if (bounds.isValid()) { map.fitBounds(bounds.pad(0.1), { maxZoom: 13 }); }
+      else { map.setView(NYC_CENTER, 11); }
+    } catch(err) {
+      console.warn('[Map] fitBounds failed:', err);
+      map.setView(NYC_CENTER, 11);
     }
-  }, [locationsByBenefit]);
+  }, [locationsByBenefit, retry]);
 
   // Count total locations
   const totalLocations = Object.values(locationsByBenefit)
@@ -293,12 +286,23 @@ function App() {
       const reader  = response.body.getReader();
       const decoder = new TextDecoder();
       let fullText  = '';
+      let sseBuffer = ""; // accumulates across TCP chunks
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const lines = decoder.decode(value).split('\n').filter(l => l.startsWith('data: '));
+	// Append new chunk to buffer — large payloads (e.g. locations) may
+        // arrive split across multiple TCP packets. Buffering ensures we only
+        // parse complete lines.
+        sseBuffer += decoder.decode(value, { stream: true });
+
+        // Split on newlines — keep the last (possibly incomplete) line in buffer
+        const rawLines = sseBuffer.split("\n");
+        sseBuffer = rawLines.pop(); // last element may be incomplete
+        const lines = rawLines.filter((l) => l.startsWith("data: "));
+
+        // const lines = decoder.decode(value).split('\n').filter(l => l.startsWith('data: '));
 
         for (const line of lines) {
           try {
